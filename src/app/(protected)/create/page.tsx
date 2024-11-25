@@ -18,38 +18,36 @@ type FormInput = {
 }
 
 const CreateProjectPage = () => {
-    const { register, handleSubmit, reset } = useForm<FormInput>();
+    const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm<FormInput>();
     const linkRepo = api.project.create.useMutation();
     const checkCredits = api.project.checkCredits.useMutation()
     const refetch = useRefetch()
 
     const router = useRouter()
     const onSubmit = async (data: FormInput) => {
-        if (!!!checkCredits.data) {
-            checkCredits.mutate({
-                githubUrl: data.repoUrl,
-                githubToken: data.githubToken,
-            }, {
-                onError: () => {
-                    toast.error("GitHub API rate limit exceeded, please try again later.");
-                },
-            })
-        } else {
-            linkRepo.mutate({
-                githubUrl: data.repoUrl,
-                name: data.projcetName,
-                githubToken: data.githubToken,
-            }, {
-                onSuccess: () => {
-                    toast.success("Project created successfully");
-                    router.push(`/dashboard`)
-                    refetch()
-                    reset()
-                },
-                onError: () => {
-                    toast.error("Failed to create project");
-                },
-            });
+        try {
+            if (!!!checkCredits.data) {
+                await checkCredits.mutateAsync({
+                    githubUrl: data.repoUrl,
+                    githubToken: data.githubToken,
+                });
+            } else {
+                await linkRepo.mutateAsync({
+                    githubUrl: data.repoUrl,
+                    name: data.projcetName,
+                    githubToken: data.githubToken,
+                });
+                toast.success("Project created successfully");
+                router.push(`/dashboard`)
+                refetch()
+                reset()
+            }
+        } catch (error: any) {
+            if (error?.message?.includes('rate limit')) {
+                toast.error("GitHub API rate limit exceeded, please try again later.");
+            } else {
+                toast.error(error?.message || "Failed to process request");
+            }
         }
     };
 
@@ -114,14 +112,18 @@ const CreateProjectPage = () => {
                         }
 
                         <div className="h-4"></div>
-                        <Button type="submit" disabled={!hasEnoughCredits} isLoading={linkRepo.isPending || checkCredits.isPending}>
-                            {checkCredits.data ? 'Create Project' : 'Check Credits'} <ArrowRight className='size-4' />
+                        <Button 
+                            type="submit" 
+                            disabled={!hasEnoughCredits || isSubmitting || checkCredits.isPending || linkRepo.isPending} 
+                            isLoading={isSubmitting || checkCredits.isPending || linkRepo.isPending}
+                        >
+                            {checkCredits.data ? 'Create Project' : 'Check Credits'} <ArrowRight className='size-4 ml-2' />
                         </Button>
                     </form>
                 </div>
             </div>
         </div>
-    );
+    )
 }
 
 export default CreateProjectPage
