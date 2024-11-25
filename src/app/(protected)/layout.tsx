@@ -3,6 +3,9 @@ import { AppSidebar } from "./app-sidebar"
 import { UserButton } from "@clerk/nextjs"
 import SearchBar from "./search-bar"
 
+export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
+
 export default function SidebarLayout({ children }: { children: React.ReactNode }) {
     return (
         <SidebarProvider>

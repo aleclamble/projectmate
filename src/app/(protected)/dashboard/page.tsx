@@ -10,6 +10,9 @@ import ArchiveButton from './archive-button'
 import InviteButton from './invite-button'
 import TeamMembers from './team-members'
 
+export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
+
 const DashboardPage = () => {
     const { project } = useProject()
 
