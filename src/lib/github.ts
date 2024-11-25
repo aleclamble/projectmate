@@ -2,6 +2,7 @@ import { db } from "@/server/db";
 import axios from "axios";
 import { Octokit } from "octokit";
 import { aiSummariseCommit } from "./gemini";
+import pLimit from 'p-limit';
 
 const octokit = new Octokit({
     auth: process.env.GITHUB_ACCESS_TOKEN
@@ -47,36 +48,40 @@ export const pollRepo = async (projectId: string) => {
     const commitHases = await getCommitHashes(project?.githubUrl ?? "");
     const unprocessedCommits = await filterUnprocessedCommits(projectId, commitHases);
     
-    // Process commits sequentially to avoid rate limits
-    const commits = [];
-    for (const commit of unprocessedCommits) {
-        try {
-            const summary = await summariseCommit(githubUrl, commit.commitHash);
-            if (summary) {
-                commits.push({
-                    projectId: projectId,
-                    commitHash: commit.commitHash,
-                    summary: summary,
-                    commitAuthorName: commit.commitAuthorName,
-                    commitDate: new Date(commit.commitDate),
-                    commitMessage: commit.commitMessage,
-                    commitAuthorAvatar: commit.commitAuthorAvatar,
-                });
+    // Use a rate limiter to process up to 3 commits concurrently
+    const limit = pLimit(3);
+    const commitPromises = unprocessedCommits.map(commit => 
+        limit(async () => {
+            try {
+                const summary = await summariseCommit(githubUrl, commit.commitHash);
+                if (summary) {
+                    return {
+                        projectId: projectId,
+                        commitHash: commit.commitHash,
+                        summary: summary,
+                        commitAuthorName: commit.commitAuthorName,
+                        commitDate: new Date(commit.commitDate),
+                        commitMessage: commit.commitMessage,
+                        commitAuthorAvatar: commit.commitAuthorAvatar,
+                    };
+                }
+            } catch (error) {
+                console.error(`Failed to process commit ${commit.commitHash}:`, error);
+                return null;
             }
-        } catch (error) {
-            console.error(`Failed to process commit ${commit.commitHash}:`, error);
-            // Continue with other commits even if one fails
-            continue;
-        }
-    }
+        })
+    );
 
-    if (commits.length > 0) {
+    const results = await Promise.all(commitPromises);
+    const validCommits = results.filter((commit): commit is NonNullable<typeof commit> => commit !== null);
+
+    if (validCommits.length > 0) {
         await db.commit.createMany({
-            data: commits,
+            data: validCommits,
         });
     }
     
-    return { processed: commits.length, total: unprocessedCommits.length };
+    return { processed: validCommits.length, total: unprocessedCommits.length };
 };
 
 async function fetchProjectGitHubUrl(projectId: string) {
