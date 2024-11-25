@@ -2,8 +2,6 @@
 
 Project Mate is an AI-powered GitHub development tool that enhances team collaboration and code understanding through intelligent analysis and project management features.
 
-![Project Mate](public/favicon.ico)
-
 ## 🚀 Features
 
 ### 🔍 GitHub Repository Integration
@@ -113,15 +111,3 @@ npm run dev
 ## 🤝 Contributing
 
 Contributions, issues, and feature requests are welcome! Feel free to check [issues page](https://github.com/yourusername/project-mate/issues).
-
-## 👨‍💻 Author
-
-Your Name
-- GitHub: [@yourusername](https://github.com/yourusername)
-- LinkedIn: [Your LinkedIn](https://linkedin.com/in/yourusername)
-
-## 🙏 Acknowledgments
-
-- Built with [T3 Stack](https://create.t3.gg/)
-- Powered by Next.js and React
-- AI capabilities by Gemini and OpenAI
