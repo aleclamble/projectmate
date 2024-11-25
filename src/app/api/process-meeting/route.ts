@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import pLimit from "p-limit";
 import { z } from "zod";
 
-export const maxDuration = 300; // 5 minutes
+export const maxDuration = 60; // Maximum allowed on Vercel Hobby plan
 
 const bodyParser = z.object({
     audio_url: z.string(),
