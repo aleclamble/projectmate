@@ -6,13 +6,6 @@ import { aiSummariseCommit } from "./gemini";
 const octokit = new Octokit({
     auth: process.env.GITHUB_ACCESS_TOKEN
 });
-// id                 String   @id @default(cuid())
-// commitMessage      String
-// commitHash         String
-// commitAuthorName   String
-// commitAuthorAvatar String
-// commitDate         DateTime
-// summary            String
 
 type response = {
     commitHash: string;
@@ -53,28 +46,37 @@ export const pollRepo = async (projectId: string) => {
     const { project, githubUrl } = await fetchProjectGitHubUrl(projectId);
     const commitHases = await getCommitHashes(project?.githubUrl ?? "");
     const unprocessedCommits = await filterUnprocessedCommits(projectId, commitHases);
-    const summariesResponse = await Promise.allSettled(
-        unprocessedCommits.map((hash) => {
-            return summariseCommit(githubUrl, hash.commitHash);
-        }),
-    );
-    const summaries = summariesResponse.map((summary) => {
-        if (summary.status === "fulfilled") {
-            return summary.value as string;
+    
+    // Process commits sequentially to avoid rate limits
+    const commits = [];
+    for (const commit of unprocessedCommits) {
+        try {
+            const summary = await summariseCommit(githubUrl, commit.commitHash);
+            if (summary) {
+                commits.push({
+                    projectId: projectId,
+                    commitHash: commit.commitHash,
+                    summary: summary,
+                    commitAuthorName: commit.commitAuthorName,
+                    commitDate: new Date(commit.commitDate),
+                    commitMessage: commit.commitMessage,
+                    commitAuthorAvatar: commit.commitAuthorAvatar,
+                });
+            }
+        } catch (error) {
+            console.error(`Failed to process commit ${commit.commitHash}:`, error);
+            // Continue with other commits even if one fails
+            continue;
         }
-    });
-    const commits = await db.commit.createMany({
-        data: summaries.map((summary, idx) => ({
-            projectId: projectId,
-            commitHash: unprocessedCommits[idx]!.commitHash,
-            summary: summary!,
-            commitAuthorName: unprocessedCommits[idx]!.commitAuthorName,
-            commitDate: unprocessedCommits[idx]!.commitDate,
-            commitMessage: unprocessedCommits[idx]!.commitMessage,
-            commitAuthorAvatar: unprocessedCommits[idx]!.commitAuthorAvatar,
-        })),
-    });
-    return commits;
+    }
+
+    if (commits.length > 0) {
+        await db.commit.createMany({
+            data: commits,
+        });
+    }
+    
+    return { processed: commits.length, total: unprocessedCommits.length };
 };
 
 async function fetchProjectGitHubUrl(projectId: string) {
@@ -90,33 +92,31 @@ async function fetchProjectGitHubUrl(projectId: string) {
 }
 
 async function summariseCommit(githubUrl: string, commitHash: string) {
-    const { data } = await axios.get(
-        `${githubUrl}/commit/${commitHash}.diff`,
-        {
-            headers: {
-                Accept: "application/vnd.github.v3.diff",
-            },
-        }
-    );
-    return await aiSummariseCommit(data) || ""
+    try {
+        const { data } = await axios.get(
+            `${githubUrl}/commit/${commitHash}.diff`,
+            {
+                headers: {
+                    Accept: "application/vnd.github.v3.diff",
+                },
+            }
+        );
+        return await aiSummariseCommit(data) || "";
+    } catch (error) {
+        console.error(`Failed to get diff for commit ${commitHash}:`, error);
+        return "";
+    }
 }
 
 async function filterUnprocessedCommits(projectId: string, commitHases: response[]) {
-    const processedCommits = await db.commit.findMany({
+    const existingCommits = await db.commit.findMany({
         where: {
             projectId: projectId,
         },
+        select: {
+            commitHash: true,
+        },
     });
-    const unprocessedCommits = commitHases.filter(
-        (hash) => !processedCommits.some((commit) => commit.commitHash === hash.commitHash)
-    );
-    return unprocessedCommits;
+    const existingHashes = new Set(existingCommits.map((c) => c.commitHash));
+    return commitHases.filter((c) => !existingHashes.has(c.commitHash));
 }
-
-
-// const githubUrl = "https://github.com/elliott-chong/normalhuman"
-// const commitHases = await getCommitHashes(githubUrl);
-// const summaries = await Promise.allSettled(
-//     commitHases.map((hash) => summariseCommit(githubUrl, hash.commitHash))
-// )
-// console.log(summaries)
